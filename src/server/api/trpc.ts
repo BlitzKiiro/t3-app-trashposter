@@ -17,8 +17,15 @@
 import { type CreateNextContextOptions } from "@trpc/server/adapters/next";
 
 import { prisma } from "~/server/db";
+import { getAuth, clerkClient } from "@clerk/nextjs/server";
+import type {
+  SignedInAuthObject,
+  SignedOutAuthObject,
+} from "@clerk/nextjs/dist/api";
 
-type CreateContextOptions = Record<string, never>;
+type CreateContextOptions = {
+  auth: SignedInAuthObject | SignedOutAuthObject;
+};
 
 /**
  * This helper generates the "internals" for a tRPC context. If you need to use it, you can export
@@ -30,9 +37,11 @@ type CreateContextOptions = Record<string, never>;
  *
  * @see https://create.t3.gg/en/usage/trpc#-serverapitrpcts
  */
-const createInnerTRPCContext = (_opts: CreateContextOptions) => {
+const createInnerTRPCContext = ({ auth }: CreateContextOptions) => {
   return {
     prisma,
+    auth,
+    clerkClient,
   };
 };
 
@@ -43,7 +52,7 @@ const createInnerTRPCContext = (_opts: CreateContextOptions) => {
  * @see https://trpc.io/docs/context
  */
 export const createTRPCContext = (_opts: CreateNextContextOptions) => {
-  return createInnerTRPCContext({});
+  return createInnerTRPCContext({ auth: getAuth(_opts.req) });
 };
 
 /**
