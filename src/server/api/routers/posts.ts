@@ -7,6 +7,16 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+const ratelimiter = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(10, "10 s"),
+  analytics: true,
+  prefix: "@upstash/ratelimit",
+});
+
 export const postsRouter = createTRPCRouter({
   hello: publicProcedure
     .input(z.object({ text: z.string() }))
@@ -55,6 +65,8 @@ export const postsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const authorID = ctx.currentUserID;
+      const { success } = await ratelimiter.limit(authorID);
+      if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
       await ctx.prisma.post.create({
         data: {
           authorID,
