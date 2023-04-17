@@ -1,17 +1,19 @@
 import { type NextPage } from "next";
 import Image from "next/image";
 import Head from "next/head";
-import { useUser } from "@clerk/nextjs";
+import { useState } from "react";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import cn from "classnames";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import Spinner from "~/components/spinner";
 
 import { api, type RouterOutputs } from "~/utils/api";
 
 dayjs.extend(relativeTime);
 
 const Home: NextPage = () => {
-  const { data: posts } = api.posts.getAll.useQuery();
+  api.posts.getAll.useQuery();
 
   return (
     <>
@@ -27,13 +29,12 @@ const Home: NextPage = () => {
       >
         <div
           className={cn(
-            "flex h-screen flex-col items-center justify-center overflow-y-scroll  border-x border-white ",
-            "mx-auto w-full  md:w-[720px]"
+            "flex h-screen flex-col items-center justify-start overflow-y-scroll",
+            "mx-auto w-full border-x border-white  md:w-[720px] "
           )}
         >
-          {posts?.map((post) => (
-            <PostView key={post.post.id} postData={post} />
-          ))}
+          <CreatePostWizard />
+          <Feed />
         </div>
       </main>
     </>
@@ -66,7 +67,76 @@ const PostView = ({ postData }: { postData: PostData }) => {
   );
 };
 
-const CreatePost = () => {
-  const user = useUser();
-  return <></>;
+const CreatePostWizard = () => {
+  const ctx = api.useContext();
+  const createPostMutation = api.posts.create.useMutation({
+    onSuccess: () => {
+      setContent("");
+      void ctx.posts.getAll.invalidate();
+    },
+  });
+  const [leftLettersCount, setleftLettersCount] = useState(288);
+  const [content, setContent] = useState("");
+
+  return (
+    <div className="flex w-full flex-col border-b border-white p-5">
+      <SignedOut>
+        <SignInButton />
+      </SignedOut>
+      <SignedIn>
+        <div className="flex w-full items-start gap-x-5">
+          <UserButton
+            appearance={{
+              elements: {
+                userButtonAvatarBox: "w-16 h-16",
+                userButtonPopoverFooter: "hidden",
+              },
+            }}
+          />
+
+          <textarea
+            className="grow resize-none bg-transparent outline-none"
+            placeholder="Type something to post"
+            rows={2}
+            value={content}
+            onChange={(e) => {
+              setleftLettersCount(280 - e.target.value.length);
+              setContent(e.target.value);
+            }}
+            maxLength={280}
+            disabled={createPostMutation.isLoading}
+          />
+          {content.length > 0 && (
+            <button
+              onClick={() => {
+                createPostMutation.mutate({ content });
+              }}
+            >
+              Post
+            </button>
+          )}
+        </div>
+        <p className=" text-right text-sm text-gray-400">
+          {leftLettersCount} characters left
+        </p>
+      </SignedIn>
+    </div>
+  );
+};
+
+const Feed = () => {
+  const {
+    data: posts,
+    isLoading: postsLoading,
+    isError: postsError,
+  } = api.posts.getAll.useQuery();
+  if (postsLoading) return <Spinner />;
+  if (postsError) return <p>something went wrong {"X("}</p>;
+  return (
+    <>
+      {posts.map((post) => (
+        <PostView key={post.post.id} postData={post} />
+      ))}
+    </>
+  );
 };

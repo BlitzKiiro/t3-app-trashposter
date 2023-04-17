@@ -18,32 +18,6 @@ import { type CreateNextContextOptions } from "@trpc/server/adapters/next";
 
 import { prisma } from "~/server/db";
 import { getAuth, clerkClient } from "@clerk/nextjs/server";
-import type {
-  SignedInAuthObject,
-  SignedOutAuthObject,
-} from "@clerk/nextjs/dist/api";
-
-type CreateContextOptions = {
-  auth: SignedInAuthObject | SignedOutAuthObject;
-};
-
-/**
- * This helper generates the "internals" for a tRPC context. If you need to use it, you can export
- * it from here.
- *
- * Examples of things you may need it for:
- * - testing, so we don't have to mock Next.js' req/res
- * - tRPC's `createSSGHelpers`, where we don't have req/res
- *
- * @see https://create.t3.gg/en/usage/trpc#-serverapitrpcts
- */
-const createInnerTRPCContext = ({ auth }: CreateContextOptions) => {
-  return {
-    prisma,
-    auth,
-    clerkClient,
-  };
-};
 
 /**
  * This is the actual context you will use in your router. It will be used to process every request
@@ -52,7 +26,11 @@ const createInnerTRPCContext = ({ auth }: CreateContextOptions) => {
  * @see https://trpc.io/docs/context
  */
 export const createTRPCContext = (_opts: CreateNextContextOptions) => {
-  return createInnerTRPCContext({ auth: getAuth(_opts.req) });
+  return {
+    prisma,
+    session: getAuth(_opts.req),
+    clerkClient,
+  };
 };
 
 /**
@@ -62,7 +40,7 @@ export const createTRPCContext = (_opts: CreateNextContextOptions) => {
  * ZodErrors so that you get typesafety on the frontend if your procedure fails due to validation
  * errors on the backend.
  */
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
@@ -102,3 +80,17 @@ export const createTRPCRouter = t.router;
  * are logged in.
  */
 export const publicProcedure = t.procedure;
+
+const authProtect = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.session.userId)
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+    });
+  return next({
+    ctx: {
+      currentUserID: ctx.session.userId,
+    },
+  });
+});
+
+export const privateProcedure = t.procedure.use(authProtect);
