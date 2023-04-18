@@ -1,20 +1,19 @@
 import { type NextPage } from "next";
 import Image from "next/image";
 import Head from "next/head";
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import cn from "classnames";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import Spinner from "~/components/spinner";
+import { PulseLoader, SpinnerLoader } from "~/components/Loaders";
+import { useInView } from "react-intersection-observer";
 
 import { api, type RouterOutputs } from "~/utils/api";
 
 dayjs.extend(relativeTime);
 
 const Home: NextPage = () => {
-  api.posts.getAll.useQuery();
-
   return (
     <>
       <Head>
@@ -43,7 +42,7 @@ const Home: NextPage = () => {
 
 export default Home;
 
-type PostData = RouterOutputs["posts"]["getAll"][number];
+type PostData = RouterOutputs["posts"]["getAll"]["postsWithAuthors"][number];
 
 const PostView = ({ postData }: { postData: PostData }) => {
   return (
@@ -125,18 +124,38 @@ const CreatePostWizard = () => {
 };
 
 const Feed = () => {
-  const {
-    data: posts,
-    isLoading: postsLoading,
-    isError: postsError,
-  } = api.posts.getAll.useQuery();
-  if (postsLoading) return <Spinner />;
-  if (postsError) return <p>something went wrong {"X("}</p>;
+  const { ref, inView } = useInView();
+
+  const { data, error, isLoading, fetchNextPage, hasNextPage } =
+    api.posts.getAll.useInfiniteQuery(
+      {
+        pageSize: 5,
+      },
+      {
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+      }
+    );
+
+  useEffect(() => {
+    if (inView && hasNextPage) {
+      void fetchNextPage();
+    }
+  }, [inView, fetchNextPage, hasNextPage]);
+
+  if (isLoading) return <PulseLoader />;
+
+  if (error) return <p>something went wrong {"X("}</p>;
+
   return (
     <>
-      {posts.map((post) => (
-        <PostView key={post.post.id} postData={post} />
+      {data.pages.map((group, i) => (
+        <React.Fragment key={i}>
+          {group.postsWithAuthors.map((post: PostData) => (
+            <PostView key={post.post.id} postData={post} />
+          ))}
+        </React.Fragment>
       ))}
+      {hasNextPage && <SpinnerLoader ref={ref} />}
     </>
   );
 };
